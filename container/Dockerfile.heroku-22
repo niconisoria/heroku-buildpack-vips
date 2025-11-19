@@ -18,8 +18,6 @@ RUN pip3 install meson
 #
 # see https://devcenter.heroku.com/articles/stack-packages
 #
-# libgsf needs libxml2
-#
 # this should only pull in header files and should not create any extra run
 # time dependencies
 RUN apt-get install -y \
@@ -40,7 +38,7 @@ RUN apt-get install -y \
   libpoppler-glib-dev \
   libimagequant-dev \
   liborc-0.4-dev \
-  libgsf-1-dev \
+  libarchive-dev \
   libcgif-dev \
   libheif-dev
 
@@ -52,6 +50,17 @@ WORKDIR /usr/local/src
 #  - heroku has a basic dir structure in /usr/local, but no files
 ARG PREFIX=/usr/local
 ENV PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
+
+# Build libarchive from source (not pre-installed on heroku-22)
+ARG ARCHIVE_VERSION=3.6.0
+ARG ARCHIVE_URL=https://github.com/libarchive/libarchive/releases/download
+
+RUN wget ${ARCHIVE_URL}/v${ARCHIVE_VERSION}/libarchive-${ARCHIVE_VERSION}.tar.xz \
+  && tar xf libarchive-${ARCHIVE_VERSION}.tar.xz \
+  && cd libarchive-${ARCHIVE_VERSION} \
+  && ./configure --prefix=${PREFIX} --disable-static \
+  && make V=0 \
+  && make install
 
 # use libspng for PNG load and save
 ARG SPNG_VERSION=0.7.2
@@ -65,7 +74,7 @@ RUN wget ${SPNG_URL}/v${SPNG_VERSION}.tar.gz \
   && ninja \
   && ninja install
 
-ARG VIPS_VERSION=8.14.3
+ARG VIPS_VERSION=8.17.3
 ARG VIPS_URL=https://github.com/libvips/libvips/archive/refs/tags
 
 RUN wget ${VIPS_URL}/v${VIPS_VERSION}/v${VIPS_VERSION}.tar.gz \
@@ -82,7 +91,7 @@ RUN wget ${VIPS_URL}/v${VIPS_VERSION}/v${VIPS_VERSION}.tar.gz \
   # modules cause issues with loading heif files in ruby-vips \
   -Dmodules=disabled \
   # allows omitting gobject-introspection library \
-  -Dintrospection=false \
+  -Dintrospection=disabled \
   && cd build \
   && meson compile \
   && meson install
@@ -110,10 +119,3 @@ RUN cd $PREFIX \
   && echo "" >> "build/heroku-$STACK_VERSION.config.log" \
   && echo "$ vips --vips-config" >> "build/heroku-$STACK_VERSION.config.log" \
   && vips --vips-config >> "build/heroku-$STACK_VERSION.config.log"
-
-# install and test ruby-vips to confirm we can pick up the libraries
-# correctly
-# we need ruby-dev to install ruby-ffi
-RUN apt-get install -y ruby-dev
-RUN gem install ruby-vips
-RUN ruby -e 'require "vips"; puts "ruby-vips: libvips #{Vips::LIBRARY_VERSION}"'
